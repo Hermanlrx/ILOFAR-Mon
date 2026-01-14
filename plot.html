@@ -12,7 +12,7 @@
         }
         #plot { 
             width: 100%; 
-            height: 800px; 
+            height: 720px; 
         }
         .controls {
             margin: 20px 0;
@@ -27,9 +27,8 @@
             display: inline-block;
             width: 150px;
         }
-        input[type="number"] {
+        input, select {
             padding: 5px;
-            width: 100px;
             background: #3a3a3a;
             color: #fff;
             border: 1px solid #555;
@@ -52,13 +51,6 @@
             border-left: 3px solid #4a90e2;
             font-size: 14px;
         }
-        select {
-            padding: 5px;
-            background: #3a3a3a;
-            color: #fff;
-            border: 1px solid #555;
-            border-radius: 3px;
-        }
     </style>
 </head>
 <body>
@@ -78,9 +70,9 @@
         <div class="control-group">
             <label>Colormap:</label>
             <select id="colormap">
+                <option value="Viridis">Viridis</option>
                 <option value="Plasma">Plasma</option>
                 <option value="Inferno">Inferno</option>
-                <option value="Viridis">Viridis</option>
                 <option value="Hot">Hot</option>
                 <option value="Jet">Jet</option>
             </select>
@@ -98,25 +90,20 @@
     <script>
         let spectrogramData = null;
         
-        // Load JSON data
         async function loadData() {
             try {
                 const response = await fetch('./spectrogram.json');
                 spectrogramData = await response.json();
                 
                 const meta = spectrogramData.metadata;
-                const info = document.getElementById('info');
-                info.innerHTML = `
+                document.getElementById('info').innerHTML = `
                     <strong>File:</strong> ${meta.original_file} | 
                     <strong>Start:</strong> ${new Date(meta.start_time).toISOString()} | 
                     <strong>Duration:</strong> ${(meta.duration_seconds / 60).toFixed(1)} min | 
                     <strong>Samples:</strong> ${meta.num_time_samples}
                 `;
                 
-                // Set max duration
                 document.getElementById('duration').max = Math.ceil(meta.duration_seconds / 60);
-                
-                console.log('Data loaded successfully');
                 updatePlot();
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -125,24 +112,17 @@
             }
         }
         
-        // Apply log scaling and flattening (matches your Python code)
         function processData(data) {
-            const nFreq = data.length;
-            const nTime = data[0].length;
-            
-            // Log scale
             const logData = data.map(row => 
                 row.map(val => Math.log10(Math.max(val, 1e-10)))
             );
             
-            // Replace -Inf with 0
             logData.forEach(row => {
                 for (let i = 0; i < row.length; i++) {
                     if (!isFinite(row[i])) row[i] = 0;
                 }
             });
             
-            // Flatten: median across time for each frequency
             const flattened = logData.map(row => {
                 const sorted = [...row].sort((a, b) => a - b);
                 const median = sorted[Math.floor(sorted.length / 2)];
@@ -153,26 +133,12 @@
             return flattened;
         }
         
-        // Apply power normalization (mimics PowerNorm from matplotlib)
-        function applyPowerNorm(data, gamma) 
-        {
-            let vmin = Infinity;
-            let vmax = -Infinity;
-
-            for (let i = 0; i < data.length; i++) {
-                const row = data[i];
-                for (let j = 0; j < row.length; j++) {
-                    const v = row[j];
-                    if (v < vmin) vmin = v;
-                    if (v > vmax) vmax = v;
-                }
-            }
-
+        function applyPowerNorm(data, vmin, vmax, gamma) {
             const range = vmax - vmin || 1;
-
             return data.map(row =>
                 row.map(val => {
-                    const normalized = (val - vmin) / range;
+                    const clipped = Math.max(vmin, Math.min(vmax, val));
+                    const normalized = (clipped - vmin) / range;
                     return Math.pow(normalized, gamma);
                 })
             );
@@ -187,101 +153,79 @@
             const gamma = parseFloat(document.getElementById('gamma').value);
             
             const times = spectrogramData.timestamps.map(t => new Date(t));
-            
-            // Calculate time indices
             const i0 = Math.floor(startMin * 60);
             const i1 = Math.min(i0 + Math.floor(duration * 60), times.length);
             
-            // Create subplots for 3 bands
-            const traces = [];
             const bands = spectrogramData.bands;
+            const traces = [];
             
-            // Calculate height ratios
-            const bw3 = bands[0].freq_range[1] - bands[0].freq_range[0];
-            const bw5 = bands[1].freq_range[1] - bands[1].freq_range[0];
-            const bw7 = bands[2].freq_range[1] - bands[2].freq_range[0];
-            const totalBw = bw3 + bw5 + bw7;
-            const ratios = [bw3/totalBw, bw5/totalBw, bw7/totalBw];
+            const dividedBands = bands.map(band => {
+                const sliced = band.data.map(row => row.slice(i0, i1));
+                return processData(sliced);
+            });
             
-            bands.forEach((band, idx) => {
-                // Slice data (no decompression needed - data is already arrays)
-                const slicedData = band.data.map(row => row.slice(i0, i1));
-                
-                // Process: log + flatten
-                let processed = processData(slicedData);
-                
-                // Apply power norm
-                processed = applyPowerNorm(processed, gamma);
-                
+            // Use percentiles from Mode 3 only (like original matplotlib)
+            const band3Flat = dividedBands[0].flat();
+            band3Flat.sort((a,b) => a - b);
+            const refVmin = band3Flat[Math.floor(band3Flat.length * 0.30)] ?? 0;
+            const refVmax = band3Flat[Math.floor(band3Flat.length * 0.95)] ?? 1;
+            
+            const processedBands = dividedBands.map(divided => 
+                applyPowerNorm(divided, refVmin, refVmax, gamma)
+            );
+            
+            processedBands.forEach((zdata, idx) => {
                 traces.push({
-                    z: processed,
+                    z: zdata,
                     x: times.slice(i0, i1),
-                    y: band.frequencies,
+                    y: bands[idx].frequencies,
                     type: 'heatmap',
                     colorscale: colormap,
+                    zmin: 0,
+                    zmax: 1,
+                    zsmooth: false,
+                    showscale: idx === 2,
                     colorbar: idx === 2 ? {
-                        title: 'Intensity',
+                        title: { text: 'Normalized Intensity', side: 'right' },
                         x: 1.02,
-                        len: ratios[2]
-                    } : { showscale: false },
+                        y: 0.5,
+                        len: 0.92,
+                        thickness: 20,
+                        tickfont: { size: 11 }
+                    } : undefined,
                     xaxis: `x${idx + 1}`,
                     yaxis: `y${idx + 1}`,
                     hovertemplate: '<b>%{y:.2f} MHz</b><br>%{x|%H:%M:%S}<br>I: %{z:.3f}<extra></extra>'
                 });
             });
             
-            // Layout with proportional heights
             const layout = {
                 title: {
-                    text: `ILOFAR Mode 357 - ${times[i0].toISOString().split('T')[1].slice(0, 5)} to ${times[i1-1].toISOString().split('T')[1].slice(0, 5)} UTC`,
+                    text: `ILOFAR Mode 357 - ${times[i0].toISOString().split('T')[1].slice(0,5)} to ${times[i1-1].toISOString().split('T')[1].slice(0,5)} UTC`,
                     font: { size: 16 }
                 },
-                grid: {
-                    rows: 3,
-                    columns: 1,
-                    pattern: 'independent',
-                    roworder: 'top to bottom',
-                    subplots: [['xy'], ['xy2'], ['xy3']],
-                    ygap: 0.05
-                },
-                xaxis: { title: '', showticklabels: false, domain: [0, 0.95] },
-                yaxis: { title: 'Mode 3 (MHz)', 
-                autorange:'reversed',
-                domain: [0.67, 1.0] },
-
-                xaxis2: { title: '', showticklabels: false, domain: [0, 0.95] },
-                yaxis2: { title: 'Mode 5 (MHz)',
-                autorange:'reversed', 
-                domain: [0.34, 0.63] },
-
+                xaxis:  { showticklabels: false, domain: [0, 0.96] },
+                xaxis2: { showticklabels: false, domain: [0, 0.96] },
                 xaxis3: { 
                     title: 'Time (UTC)',
-                    domain: [0, 0.95],
-                    tickformat: '%H:%M'
+                    tickformat: '%H:%M',
+                    domain: [0, 0.96]
                 },
-                yaxis3: { title: 'Mode 7 (MHz)', 
-                autorange:'reversed',
-                domain: [0, 0.30] },
+                // Explicit domains with small gaps → 0.015–0.02 spacing
+                yaxis:  { title: 'Mode 3 (MHz)', autorange: 'reversed', domain: [0.65, 1.000] }, // ~35
+                yaxis2: { title: 'Mode 5 (MHz)', autorange: 'reversed', domain: [0.25, 0.60] }, // ~35%
+                yaxis3: { title: 'Mode 7 (MHz)', autorange: 'reversed', domain: [0.000, 0.20] }, // ~20
 
                 plot_bgcolor: '#1a1a1a',
                 paper_bgcolor: '#2a2a2a',
                 font: { color: '#fff' },
                 hovermode: 'closest',
-                height: 800
+                height: 520,
+                margin: { l: 65, r: 90, t: 50, b: 70 },
+                grid: { rows: 3, columns: 1, pattern: 'independent' } // keep for reference, but domains dominate
             };
             
-            const config = {
-                responsive: true,
-                displayModeBar: true,
-                toImageButtonOptions: {
-                    format: 'png',
-                    filename: `ilofar_${startMin}min`,
-                    height: 1000,
-                    width: 1200
-                }
-            };
-            
-            Plotly.newPlot('plot', traces, layout, config);
+            Plotly.newPlot('plot', traces, layout);
         }
         
         function resetView() {
@@ -291,7 +235,6 @@
             updatePlot();
         }
         
-        // Load data on page load
         loadData();
     </script>
 </body>

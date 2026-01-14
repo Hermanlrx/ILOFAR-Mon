@@ -141,8 +141,8 @@ def plot_357_minimal(specs, start_min=10, duration_min=20):
     c_m5 = log_m5 / bg5
     c_m7 = log_m7 / bg7
 
-    vmin = np.percentile(c_m3, 30)  # Hide bottom 30% of values
-    vmax = np.percentile(c_m3, 95)  # Cap at 99th percentile
+    vmin = np.percentile(c_m3, 0)  # Hide bottom 30% of values
+    vmax = np.percentile(c_m3, 99.9)  
     
     # Time axis setup
     t0 = mdates.date2num(meta3['times'][i0].datetime)
