@@ -92,7 +92,7 @@
         
         async function loadData() {
             try {
-                const response = await fetch('./spectrogram.json');
+                const response = await fetch('./latest_spectrogram.json');
                 spectrogramData = await response.json();
                 
                 const meta = spectrogramData.metadata;

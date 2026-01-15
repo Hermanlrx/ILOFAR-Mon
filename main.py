@@ -1,15 +1,25 @@
-from radiospectra.spectrogram import Spectrogram   # new unified class (radiospectra ≥ 0.5–0.6)
+from radiospectra.spectrogram import Spectrogram 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import gridspec
 from matplotlib.colors import PowerNorm, LogNorm
-from scipy import ndimage
 import json
+from pathlib import Path
 import os
 
+NEWOBS = Path(r"./ldb/data_buff/2026.01.15/datastream/")
 
-def bst_to_json(bst_file, output_json, downsample_time=1):
+x_dat_files = sorted(
+    NEWOBS.glob("*X.dat"),
+    key=lambda p: p.stat().st_mtime,  
+    reverse=True                        
+)
+
+
+x_dat_file = x_dat_files[0]
+
+def bst_to_json(bst_file, output_json):
     """
     Convert BST file to JSON format for web plotting.
     No compression - preserves all data fidelity.
@@ -20,8 +30,6 @@ def bst_to_json(bst_file, output_json, downsample_time=1):
         Path to .dat file
     output_json : str
         Output JSON path
-    downsample_time : int
-        Factor to downsample time axis (1=no downsampling, keeps all data)
     """
     specs = Spectrogram._read_file(bst_file)
     
@@ -96,15 +104,20 @@ def bst_to_json(bst_file, output_json, downsample_time=1):
     
     return json_data
 
-bst_to_json('20260112_120037_bst_00X.dat', 'spectrogram.json')
+bst_to_json(x_dat_file, 'latest_spectrogram.json')
 
-def plot_357_minimal(specs, start_min=10, duration_min=20):
+def plot_357_minimal(specs, start_min=0):
     if len(specs) != 3:
         raise ValueError("Need 3 bands")
     
     data3, meta3 = specs[0]
     data5, meta5 = specs[1]
     data7, meta7 = specs[2]
+    
+    
+    endtime = (meta3['end_time']-meta3['start_time']).sec
+    print(endtime)
+    duration_min = endtime
     
     # Get time indices
     t = (meta7['times'] - meta3['start_time']).sec
@@ -115,6 +128,8 @@ def plot_357_minimal(specs, start_min=10, duration_min=20):
     m3 = data3[:, i0:i1]
     m5 = data5[:, i0:i1]
     m7 = data7[:, i0:i1]
+
+    
     
     # Apply log scaling FIRST (matching original)
     log_m3 = np.log10(np.maximum(m3, 1e-10))
@@ -141,7 +156,7 @@ def plot_357_minimal(specs, start_min=10, duration_min=20):
     c_m5 = log_m5 / bg5
     c_m7 = log_m7 / bg7
 
-    vmin = np.percentile(c_m3, 0)  # Hide bottom 30% of values
+    vmin = np.percentile(c_m3, 0) 
     vmax = np.percentile(c_m3, 99.9)  
     
     # Time axis setup
@@ -202,6 +217,7 @@ def plot_357_minimal(specs, start_min=10, duration_min=20):
     
     plt.tight_layout(rect=[0.03, 0.05, 0.95, 0.97])
     plt.show()
-specs = Spectrogram._read_file('20260112_120037_bst_00X.dat')
-plot_357_minimal(specs)
+
+specs = Spectrogram._read_file(x_dat_file)
+#plot_357_minimal(specs)
 
