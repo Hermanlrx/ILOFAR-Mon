@@ -27,7 +27,10 @@
             display: inline-block;
             width: 150px;
         }
-        input, select {
+        input[type="range"] {
+            cursor: pointer;
+        }
+        select {
             padding: 5px;
             background: #3a3a3a;
             color: #fff;
@@ -60,16 +63,16 @@
     
     <div class="controls">
         <div class="control-group">
-            <label>Start Time (minutes):</label>
-            <input type="number" id="startMin" value="0" min="0" step="1">
+            <label>Start Time: <span id="startTimeLabel">0 min</span></label>
+            <input type="range" id="startMin" value="0" min="0" step="1" style="width: 300px;" oninput="debouncedUpdate()">
         </div>
         <div class="control-group">
-            <label>Duration (minutes):</label>
-            <input type="number" id="duration" value="60" min="1" step="1" max="120">
+            <label>Duration: <span id="durationLabel">60 min</span></label>
+            <input type="range" id="duration" value="60" min="1" step="1" max="120" style="width: 300px;" oninput="debouncedUpdate()">
         </div>
         <div class="control-group">
             <label>Colormap:</label>
-            <select id="colormap">
+            <select id="colormap" onchange="debouncedUpdate()">
                 <option value="Viridis">Viridis</option>
                 <option value="Plasma">Plasma</option>
                 <option value="Inferno">Inferno</option>
@@ -78,10 +81,9 @@
             </select>
         </div>
         <div class="control-group">
-            <label>Gamma:</label>
-            <input type="number" id="gamma" value="0.9" min="0.1" max="2" step="0.05">
+            <label>Gamma: <span id="gammaLabel">0.9</span></label>
+            <input type="range" id="gamma" value="0.9" min="0.1" max="2" step="0.05" style="width: 300px;" oninput="debouncedUpdate()">
         </div>
-        <button onclick="updatePlot()">Update Plot</button>
         <button onclick="resetView()">Reset View</button>
     </div>
     
@@ -89,6 +91,7 @@
     
     <script>
         let spectrogramData = null;
+        let debounceTimer = null;
         
         async function loadData() {
             try {
@@ -104,6 +107,7 @@
                 `;
                 
                 document.getElementById('duration').max = Math.ceil(meta.duration_seconds / 60);
+                document.getElementById('startMin').max = Math.ceil(meta.duration_seconds / 60);
                 updatePlot();
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -112,17 +116,21 @@
             }
         }
         
+        // Process raw intensity data: log scale → background division
         function processData(data) {
+            // Step 1: Convert to log10 scale (floor at 1e-10 to avoid log(0))
             const logData = data.map(row => 
                 row.map(val => Math.log10(Math.max(val, 1e-10)))
             );
             
+            // Step 2: Replace any NaN/Inf values with 0
             logData.forEach(row => {
                 for (let i = 0; i < row.length; i++) {
                     if (!isFinite(row[i])) row[i] = 0;
                 }
             });
             
+            // Step 3: Divide each frequency row by its median (background subtraction)
             const flattened = logData.map(row => {
                 const sorted = [...row].sort((a, b) => a - b);
                 const median = sorted[Math.floor(sorted.length / 2)];
@@ -133,47 +141,75 @@
             return flattened;
         }
         
+        // Apply power-law normalization with gamma correction for contrast
         function applyPowerNorm(data, vmin, vmax, gamma) {
             const range = vmax - vmin || 1;
             return data.map(row =>
                 row.map(val => {
+                    // Clip to [vmin, vmax] range
                     const clipped = Math.max(vmin, Math.min(vmax, val));
+                    // Normalize to [0, 1]
                     const normalized = (clipped - vmin) / range;
+                    // Apply gamma power law
                     return Math.pow(normalized, gamma);
                 })
             );
         }
         
+        function debouncedUpdate() {
+            // Update labels immediately for instant feedback
+            const startMin = parseFloat(document.getElementById('startMin').value);
+            const duration = parseFloat(document.getElementById('duration').value);
+            const gamma = parseFloat(document.getElementById('gamma').value);
+            
+            document.getElementById('startTimeLabel').textContent = `${startMin} min`;
+            document.getElementById('durationLabel').textContent = `${duration} min`;
+            document.getElementById('gammaLabel').textContent = gamma.toFixed(2);
+            
+            // Debounce the expensive plot update
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                updatePlot();
+            }, 150);
+        }
+        
         function updatePlot() {
             if (!spectrogramData) return;
             
+            // Get current control values
             const startMin = parseFloat(document.getElementById('startMin').value);
             const duration = parseFloat(document.getElementById('duration').value);
             const colormap = document.getElementById('colormap').value;
             const gamma = parseFloat(document.getElementById('gamma').value);
             
+            // Convert timestamps to Date objects
             const times = spectrogramData.timestamps.map(t => new Date(t));
+            
+            // Calculate time window indices (1 sample per second)
             const i0 = Math.floor(startMin * 60);
             const i1 = Math.min(i0 + Math.floor(duration * 60), times.length);
             
             const bands = spectrogramData.bands;
             const traces = [];
             
+            // Process each band: slice time window → log/background processing
             const dividedBands = bands.map(band => {
                 const sliced = band.data.map(row => row.slice(i0, i1));
                 return processData(sliced);
             });
             
-            // Use percentiles from Mode 3 only (like original matplotlib)
-            const band3Flat = dividedBands[0].flat();
-            band3Flat.sort((a,b) => a - b);
-            const refVmin = band3Flat[Math.floor(band3Flat.length * 0.30)] ?? 0;
-            const refVmax = band3Flat[Math.floor(band3Flat.length * 0.95)] ?? 1;
+            // Calculate vmin/vmax from ALL bands combined (30th and 95th percentiles)
+            const allData = dividedBands.flatMap(band => band.flat());
+            allData.sort((a,b) => a - b);
+            const refVmin = allData[Math.floor(allData.length * 0.30)] ?? 0;
+            const refVmax = allData[Math.floor(allData.length * 0.95)] ?? 1;
             
+            // Apply gamma normalization to all bands using global limits
             const processedBands = dividedBands.map(divided => 
                 applyPowerNorm(divided, refVmin, refVmax, gamma)
             );
             
+            // Create heatmap trace for each band (Mode 3, 5, 7)
             processedBands.forEach((zdata, idx) => {
                 traces.push({
                     z: zdata,
@@ -184,7 +220,7 @@
                     zmin: 0,
                     zmax: 1,
                     zsmooth: false,
-                    showscale: idx === 2,
+                    showscale: idx === 2,  // Only show colorbar for bottom panel
                     colorbar: idx === 2 ? {
                         title: { text: 'Normalized Intensity', side: 'right' },
                         x: 1.02,
@@ -199,6 +235,7 @@
                 });
             });
             
+            // Layout: 3 stacked panels with shared time axis
             const layout = {
                 title: {
                     text: `ILOFAR Mode 357 - ${times[i0].toISOString().split('T')[1].slice(0,5)} to ${times[i1-1].toISOString().split('T')[1].slice(0,5)} UTC`,
@@ -211,18 +248,17 @@
                     tickformat: '%H:%M',
                     domain: [0, 0.96]
                 },
-                // Explicit domains with small gaps → 0.015–0.02 spacing
-                yaxis:  { title: 'Mode 3 (MHz)', autorange: 'reversed', domain: [0.65, 1.000] }, // ~35
-                yaxis2: { title: 'Mode 5 (MHz)', autorange: 'reversed', domain: [0.25, 0.60] }, // ~35%
-                yaxis3: { title: 'Mode 7 (MHz)', autorange: 'reversed', domain: [0.000, 0.20] }, // ~20
-
+                // Vertical panel layout: Mode 3 (top 35%), Mode 5 (middle 35%), Mode 7 (bottom 20%)
+                yaxis:  { title: 'Mode 3 (MHz)', autorange: 'reversed', domain: [0.65, 1.000] },
+                yaxis2: { title: 'Mode 5 (MHz)', autorange: 'reversed', domain: [0.25, 0.60] },
+                yaxis3: { title: 'Mode 7 (MHz)', autorange: 'reversed', domain: [0.000, 0.20] },
                 plot_bgcolor: '#1a1a1a',
                 paper_bgcolor: '#2a2a2a',
                 font: { color: '#fff' },
                 hovermode: 'closest',
                 height: 520,
                 margin: { l: 65, r: 90, t: 50, b: 70 },
-                grid: { rows: 3, columns: 1, pattern: 'independent' } // keep for reference, but domains dominate
+                grid: { rows: 3, columns: 1, pattern: 'independent' }
             };
             
             Plotly.newPlot('plot', traces, layout);

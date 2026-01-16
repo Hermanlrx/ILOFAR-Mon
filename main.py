@@ -92,21 +92,30 @@ def bst_to_json(bst_file, output_json):
         'timestamps': timestamps
     }
     
-    # Save with indentation for readability (optional - remove indent for smaller files)
     with open(output_json, 'w') as f:
         json.dump(json_data, f, indent=2)
     
     file_size_mb = os.path.getsize(output_json) / 1024 / 1024
-    print(f"✓ Saved to {output_json}")
-    print(f"✓ File size: {file_size_mb:.2f} MB")
-    print(f"✓ Time samples: {len(timestamps)}")
-    print(f"✓ Frequency channels: {data3.shape[0]} + {data5.shape[0]} + {data7.shape[0]}")
+    print(f" Saved to {output_json}")
+    print(f" File size: {file_size_mb:.2f} MB")
+    print(f" Time samples: {len(timestamps)}")
+    print(f" Frequency channels: {data3.shape[0]} + {data5.shape[0]} + {data7.shape[0]}")
     
     return json_data
 
 bst_to_json(x_dat_file, 'latest_spectrogram.json')
 
 def plot_357_minimal(specs, start_min=0):
+    """
+    ILOFAR solar radio spectra plotting function using sunpy/radiospectra
+    
+    Parameters
+    ----------
+    specs : Spectogram 
+        This is class created by Spectrogram factory containing observations and metadata
+    start_min : int
+        This was initially used along with a duration variable to plot chunks of spectra but functionality has changed since
+    """
     if len(specs) != 3:
         raise ValueError("Need 3 bands")
     
@@ -168,7 +177,7 @@ def plot_357_minimal(specs, start_min=0):
     f5 = meta5['freqs'].to_value('MHz')
     f7 = meta7['freqs'].to_value('MHz')
     
-    # Height ratios
+    
     ratios = [
         abs(f3.max() - f3.min()),
         abs(f5.max() - f5.min()),
@@ -176,11 +185,10 @@ def plot_357_minimal(specs, start_min=0):
     ]
     ratios = [r / sum(ratios) for r in ratios]
     
-    # Use PowerNorm like original (not LogNorm after flattening)
-    #norm = PowerNorm(gamma=0.5)
+    
     norm = PowerNorm(gamma=0.9,vmin= vmin,vmax=vmax)
     
-    # Create figure
+
     fig = plt.figure(figsize=(10, 7))
     gs = gridspec.GridSpec(3, 2, width_ratios=[20, 1], height_ratios=ratios,
                           wspace=0.05, hspace=0.3)
