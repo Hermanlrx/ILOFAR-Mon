@@ -4,7 +4,7 @@ Interactive web viewer for dynamic solar radio spectrograms from the Irish LOFAR
 
 This single-page application visualizes high-resolution spectrogram data across three observing modes (Mode 3, Mode 5, Mode 7) in a stacked layout.
 
-<img width="1443" height="657" alt="Screenshot 2026-01-19 at 13 06 45" src="https://github.com/user-attachments/assets/ab776eb3-059f-4201-bb15-492ebcf89c49" />
+<img width="1443" height="657" alt="LofarScreen" src="https://github.com/user-attachments/assets/ab776eb3-059f-4201-bb15-492ebcf89c49" />
 
 
 ## What it does
