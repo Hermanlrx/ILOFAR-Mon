@@ -8,12 +8,16 @@ import json
 from pathlib import Path
 import os
 
-NEWOBS = Path(r"./ldb/data_buff/2026.01.15/datastream/")
+NEWOBS = Path(r"./ldb/data_buff/2026.01.19/datastream/")
+
+def get_mtime(path):
+    return path.stat().st_mtime
+
 
 x_dat_files = sorted(
     NEWOBS.glob("*X.dat"),
-    key=lambda p: p.stat().st_mtime,  
-    reverse=True                        
+    key=get_mtime,
+    reverse=True   
 )
 
 
