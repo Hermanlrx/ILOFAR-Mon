@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import os
 
-NEWOBS = Path(r"./ldb/data_buff/2026.01.19/datastream/")
+NEWOBS = Path(r"./ldb/data_buff/2026.01.20/datastream/")
 
 def get_mtime(path):
     return path.stat().st_mtime

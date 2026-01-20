@@ -1,0 +1,600 @@
+
+<script>history.scrollRestoration="manual";window.scrollTo(0,0)</script>
+
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+
+<!-- Load Syncfusion dependencies -->
+<link href="https://cdn.syncfusion.com/ej2/material.css" rel="stylesheet">
+<script src="https://cdn.syncfusion.com/ej2/dist/ej2.min.js"></script>
+
+<!-- ----------------------- below buttons are used to divide page up into three different categories --------------------------------------------------- -->
+<button id="spectrogramViewer" class="tablink" onclick="openPage('Dynamic-Spectrogram', this)">Dynamic Spectrogram</button>
+<button id="archive" class="tablink" onclick="openPage('Archived-Data', this)">Archived Data</button>
+<button id="engineering" class="tablink" onclick="openPage('Telescope-Info', this)">Engineering Info</button>
+
+<br><br>
+
+<style>
+    .tablink {
+        background-color: #555;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-right: 5px;
+    }
+    
+    .tablink:hover {
+        background-color: #777;
+    }
+    
+    .tabcontent {
+        display: none;
+        padding: 20px;
+    }
+    
+    .button_loadgraphs {
+        background-color: #4a90e2;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-size: 16px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    
+    .button_loadgraphs:hover {
+        background-color: #357abd;
+    }
+    
+    .row {
+        display: flex;
+        width: 100%;
+    }
+    
+    .column {
+        flex: 50%;
+        padding: 5px;
+    }
+    
+</style>
+
+<!-- ----------------------- Archived Data TAB --------------------------------------------------- -->
+<div id="Archived-Data" class="tabcontent">
+<h3>Archived Spectra</h3>
+
+<p>Archived dynamic spectra of when I-LOFAR was in local mode is shown on this page. Pick a date to show data.</p>
+
+<!-- ------------------------ Inserting the Calendar element into website below-- --------------------------------->
+<div id="test"></div>
+<div id="container" class="date"><input id="value_date" type="text" /></div>
+<button id="button_spectra" class="button button_loadgraphs">Load graphs</button>
+<div id="spectra_update"></div>
+
+<!-- ------------------------ BELOW DIV CONTAINS SPECTRA-- --------------------------------->
+<div id="textenter">
+<h4 id="changing"></h4>
+</div>
+<div id="spectracontainer" class="spectrahide"></div>
+
+<!-- ------------------------ BELOW IS JAVASCRIPT FOR CALENDAR-- --------------------------------->
+<script>
+// Initialize after page loads
+(function() {
+    // Wait a bit for external scripts to load
+    setTimeout(function() {
+        initCalendar();
+    }, 150);
+    
+    function initCalendar() {
+        var ele = document.getElementById('container');
+        if (ele) {
+            ele.style.visibility = "visible";
+        }
+
+        // Get today's date to disable it
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var yesterday = new Date(today.getTime() - 86400000);
+
+        var datepicker = new ej.calendars.DatePicker({
+            placeholder: 'Choose a date (YYYY/MM/DD)',
+            width: 400,
+            value: null,
+            format: 'yyyy/MM/dd',
+            renderDayCell: onRenderCell,
+            cssClass: 'e-custom-style',
+            depth: 'Month',
+            start: 'Decade',
+            max: yesterday,
+            min: new Date('2022-02-28')
+        });
+
+        function onRenderCell(args) {
+            var checkDate = new Date(args.date);
+            checkDate.setHours(0, 0, 0, 0);
+            
+            // Disable today and future dates
+            if (checkDate >= today) {
+                args.isDisabled = true;
+                return;
+            }
+
+            // Disable dates in the blacklist (if date_list exists)
+            if (typeof date_list !== 'undefined' && date_list && date_list.length > 0) {
+                for (var i = 0; i < date_list.length; i++) {
+                    var blacklistDate = new Date(date_list[i]);
+                    blacklistDate.setHours(0, 0, 0, 0);
+                    
+                    if (checkDate.getTime() === blacklistDate.getTime()) {
+                        args.isDisabled = true;
+                        return;
+                    }
+                }
+            }
+            var cutoff = new Date("2022-02-28");
+            cutoff.setHours(0, 0, 0, 0);
+            if (checkDate < cutoff) {
+                args.isDisabled = true;
+                return;
+    }
+        }
+
+        datepicker.appendTo('#value_date');
+
+        // Setup button click handler
+        var chosen_date = document.getElementById('value_date');
+        
+        document.getElementById("button_spectra").addEventListener("click", function() {
+            if (chosen_date.value && chosen_date.value.trim() !== '') {
+                spectra_generator();
+            } else {
+                alert('Please select a date first');
+            }
+        });
+
+        // Create rows and columns for the spectra
+        for (var i = 1; i < 81; i++) {
+            var newDivX = document.createElement('div');
+            newDivX.id = 'spectra_X' + i;
+            newDivX.className = 'row';
+            document.getElementById('spectracontainer').appendChild(newDivX);
+
+            var newDivY = document.createElement('div');
+            newDivY.id = 'spectra_Y' + i;
+            newDivY.className = 'row';
+            document.getElementById('spectracontainer').appendChild(newDivY);
+        }
+
+        for (var i = 1; i < 81; i++) {
+            var leftX = document.createElement('div');
+            leftX.id = 'spectra_left_X' + i;
+            leftX.className = 'column';
+            document.getElementById('spectra_X' + i).appendChild(leftX);
+
+            var leftY = document.createElement('div');
+            leftY.id = 'spectra_left_Y' + i;
+            leftY.className = 'column';
+            document.getElementById('spectra_Y' + i).appendChild(leftY);
+
+            var rightX = document.createElement('div');
+            rightX.id = 'spectra_right_X' + i;
+            rightX.className = 'column';
+            document.getElementById('spectra_X' + i).appendChild(rightX);
+
+            var rightY = document.createElement('div');
+            rightY.id = 'spectra_right_Y' + i;
+            rightY.className = 'column';
+            document.getElementById('spectra_Y' + i).appendChild(rightY);
+        }
+
+        function spectra_generator() {
+            var container = document.getElementById('spectracontainer');
+            var images = container.getElementsByTagName('img');
+            
+            // Remove existing images
+            while(images.length > 0) {
+                images[0].parentNode.removeChild(images[0]);
+            }
+
+            var script = document.createElement('script');
+            var prior = document.getElementsByTagName('script')[0];
+            script.async = 1;
+
+            script.onload = script.onreadystatechange = function (_, isAbort) {
+                if (isAbort || !script.readyState || /loaded|complete/.test(script.readyState)) {
+                    script.onload = script.onreadystatechange = null;
+                    script = undefined;
+                }
+            };
+
+            var dateValue = chosen_date.value.replace(/\//g, '.');
+            script.src = "https://data.lofar.ie/monitor/" + dateValue + "/figures.js";
+            prior.parentNode.insertBefore(script, prior);
+            
+            document.getElementById('changing').textContent = "Showing data for date: " + chosen_date.value;
+
+            // Hide broken images
+            setTimeout(function() {
+                document.querySelectorAll('#spectracontainer img').forEach(function (img) {
+                    img.onerror = function () { 
+                        this.style.display = 'none'; 
+                    };
+                });
+            }, 1000);
+        }
+    }
+})();
+</script>
+
+<!-- Load the blacklist script -->
+<script src="https://lofar.ie/operations-monitor/filedates_calendar.js"></script>
+</div>
+
+
+<!-- Dynamic spectra loading code -->
+<div id="Dynamic-Spectrogram" class="tabcontent">
+    <h3>ILOFAR Mode 357 Dynamic Spectrogram Viewer</h3>
+    
+    <div id="spec_info" class="info" style="margin: 10px 0; padding: 10px; background: #2a2a2a; border-left: 3px solid #4a90e2; font-size: 14px; color: #fff;">
+        Loading spectrogram data...
+    </div>
+    
+    <div class="controls" style="margin: 20px 0; padding: 15px; background: #2a2a2a; border-radius: 5px; color: #fff;">
+        <div class="control-group" style="margin: 10px 0;">
+            <label style="display: inline-block; width: 150px;">Start Time: <span id="spec_startTimeLabel">0 min</span></label>
+            <input type="range" id="spec_startMin" value="0" min="0" step="1" style="width: 300px; cursor: pointer;" oninput="debouncedSpecUpdate()">
+        </div>
+        <div class="control-group" style="margin: 10px 0;">
+            <label style="display: inline-block; width: 150px;">Duration: <span id="spec_durationLabel">60 min</span></label>
+            <input type="range" id="spec_duration" min="1" step="1" max="600" style="width: 300px; cursor: pointer;" oninput="debouncedSpecUpdate()">
+        </div>
+        <div class="control-group" style="margin: 10px 0;">
+            <label style="display: inline-block; width: 150px;">Colormap:</label>
+            <select id="spec_colormap" onchange="debouncedSpecUpdate()" style="padding: 5px; background: #3a3a3a; color: #fff; border: 1px solid #555; border-radius: 3px;">
+                <option value="Viridis">Viridis</option>
+                <option value="Cividis">Cividis</option>
+                <option value="Greys">Greys</option>
+                <option value="Jet">Jet</option>
+            </select>
+        </div>
+        <button onclick="resetSpecView()" style="padding: 10px 20px; margin: 5px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset View</button>
+    </div>
+    
+    <div id="spec_plot" style="width: 100%; height: 720px;"></div>
+    
+    <script>
+        let spectrogramData = null;
+        let debounceTimer = null;
+        
+        async function loadSpecData() {
+            try {
+                const response = await fetch('https://lofar.ie/wp-content/uploads/operations-monitor/test_dev/latest_spectrogram_test.json');
+                spectrogramData = await response.json();
+                
+                const meta = spectrogramData.metadata;
+
+                const durationMinutes = Math.ceil(meta.duration_seconds / 60);
+
+                const durationSlider = document.getElementById('spec_duration');
+                durationSlider.max = durationMinutes;
+                durationSlider.value = durationMinutes;
+
+                document.getElementById('spec_durationLabel').textContent =
+                `${Math.ceil(durationMinutes)} min`;
+
+                document.getElementById('spec_info').innerHTML = `
+                    <strong>File:</strong> ${meta.original_file} | 
+                    <strong>Start:</strong> ${new Date(meta.start_time).toISOString()} | 
+                    <strong>Duration:</strong> ${(meta.duration_seconds / 60).toFixed(1)} min 
+                `;
+                
+                document.getElementById('spec_duration').max = Math.ceil(meta.duration_seconds / 60);
+                document.getElementById('spec_startMin').max = Math.ceil(meta.duration_seconds / 60);
+                updateSpecPlot();
+            } catch (error) {
+                console.error('Error loading spectrogram data:', error);
+                document.getElementById('spec_info').innerHTML = 
+                    '<strong style="color: #ff6b6b;">Error loading data. Check console for details.</strong>';
+            }
+        }
+        
+        function processSpecData(data) {
+            const logData = data.map(row => 
+                row.map(val => Math.log10(Math.max(val, 1e-10)))
+            );
+            
+            logData.forEach(row => {
+                for (let i = 0; i < row.length; i++) {
+                    if (!isFinite(row[i])) row[i] = 0;
+                }
+            });
+            
+            const flattened = logData.map(row => {
+                const sorted = [...row].sort((a, b) => a - b);
+                const median = sorted[Math.floor(sorted.length / 2)];
+                const bg = median === 0 ? 1.0 : median;
+                return row.map(val => val / bg);
+            });
+            
+            return flattened;
+        }
+        
+        function applySpecPowerNorm(data, vmin, vmax, gamma) {
+            const range = vmax - vmin || 1;
+            return data.map(row =>
+                row.map(val => {
+                    const clipped = Math.max(vmin, Math.min(vmax, val));
+                    const normalized = (clipped - vmin) / range;
+                    return Math.pow(normalized, gamma);
+                })
+            );
+        }
+        
+        function debouncedSpecUpdate() {
+            const startMin = parseFloat(document.getElementById('spec_startMin').value);
+            const duration = parseFloat(document.getElementById('spec_duration').value);
+
+            
+            document.getElementById('spec_startTimeLabel').textContent = `${startMin} min`;
+            document.getElementById('spec_durationLabel').textContent = `${duration} min`;
+
+            
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                updateSpecPlot();
+            }, 150);
+        }
+        
+        function updateSpecPlot() {
+            if (!spectrogramData) return;
+            
+            const startMin = parseFloat(document.getElementById('spec_startMin').value);
+            const duration = parseFloat(document.getElementById('spec_duration').value);
+            const colormap = document.getElementById('spec_colormap').value;
+            const gamma = 0.9
+            
+            const times = spectrogramData.timestamps.map(t => new Date(t));
+            const i0 = Math.floor(startMin * 60);
+            const i1 = Math.min(i0 + Math.floor(duration * 60), times.length);
+            
+            const bands = spectrogramData.bands;
+            const traces = [];
+            
+            const dividedBands = bands.map(band => {
+                const sliced = band.data.map(row => row.slice(i0, i1));
+                return processSpecData(sliced);
+            });
+            
+            const allData = dividedBands.flatMap(band => band.flat());
+            allData.sort((a,b) => a - b);
+            const refVmin = allData[Math.floor(allData.length * 0.30)] ?? 0;
+            const refVmax = allData[Math.floor(allData.length * 0.95)] ?? 1;
+            
+            const processedBands = dividedBands.map(divided => 
+                applySpecPowerNorm(divided, refVmin, refVmax, gamma)
+            );
+            
+            processedBands.forEach((zdata, idx) => {
+                traces.push({
+                    z: zdata,
+                    x: times.slice(i0, i1),
+                    y: bands[idx].frequencies,
+                    type: 'heatmap',
+                    colorscale: colormap,
+                    zmin: 0,
+                    zmax: 1,
+                    zsmooth: false,
+                    showscale: idx === 2,
+                    colorbar: idx === 2 ? {
+                        title: { text: 'Normalized Intensity', side: 'right' },
+                        x: 1.02,
+                        y: 0.5,
+                        len: 0.92,
+                        thickness: 20,
+                        tickfont: { size: 11 }
+                    } : undefined,
+                    xaxis: `x${idx + 1}`,
+                    yaxis: `y${idx + 1}`,
+                    hovertemplate: '<b>%{y:.2f} MHz</b><br>%{x|%H:%M:%S}<br>I: %{z:.3f}<extra></extra>'
+                });
+            });
+            
+            const layout = {
+                title: {
+                    text: `ILOFAR Mode 357 - ${times[i0].toISOString().split('T')[1].slice(0,5)} to ${times[i1-1].toISOString().split('T')[1].slice(0,5)} UTC`,
+                    font: { size: 16 }
+                },
+                xaxis:  { showticklabels: false, domain: [0, 0.96] },
+                xaxis2: { showticklabels: false, domain: [0, 0.96] },
+                xaxis3: { 
+                    title: 'Time (UTC)',
+                    tickformat: '%H:%M',
+                    domain: [0, 0.96]
+                },
+                yaxis:  { title: 'Mode 3 (MHz)', autorange: 'reversed', domain: [0.65, 1.000] },
+                yaxis2: { title: 'Mode 5 (MHz)', autorange: 'reversed', domain: [0.25, 0.60] },
+                yaxis3: { title: 'Mode 7 (MHz)', autorange: 'reversed', domain: [0.000, 0.20] },
+                plot_bgcolor: '#1a1a1a',
+                paper_bgcolor: '#2a2a2a',
+                font: { color: '#fff' },
+                hovermode: 'closest',
+                height: 720,
+                margin: { l: 65, r: 90, t: 50, b: 70 },
+                grid: { rows: 3, columns: 1, pattern: 'independent' }
+            };
+            
+            Plotly.newPlot('spec_plot', traces, layout);
+        }
+        
+        function resetSpecView() {
+            
+            
+            const meta = spectrogramData.metadata;
+
+            const durationMinutes = Math.ceil(meta.duration_seconds / 60);
+
+            document.getElementById('spec_startMin').value = 0;
+            document.getElementById('spec_duration').value = durationMinutes;
+            document.getElementById('spec_durationLabel').textContent = `${durationMinutes} min`;
+
+            updateSpecPlot();
+        }
+        
+        document.getElementById('spectrogramViewer').addEventListener('click', function() {
+            if (spectrogramData === null) {
+                loadSpecData();
+            }
+        });
+    </script>
+</div>
+
+<!-- ------------------------------------------------- ENGINEERING INFO TAB ----------------------------------------------------------------------------- -->
+<div id="Telescope-Info" class="tabcontent">
+  <div id="info">
+    <h2>LOFAR Telescope Operations Monitor</h2>
+
+    <h3>LCU Status</h3>
+    <div id="lcu-status" class="log-container">
+      <div class="log-loading">Loading LCU status...</div>
+      <pre id="lcu-content"></pre>
+    </div>
+
+    <h3>LGC Status</h3>
+    <div id="lgc-status" class="log-container">
+      <div class="log-loading">Loading LGC status...</div>
+      <pre id="lgc-content"></pre>
+    </div>
+  </div>
+
+  <style>
+    .log-container {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      padding: 1rem;
+      border-radius: 6px;
+      border: 1px solid #444;
+      margin-bottom: 1.5rem;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .log-loading {
+      color: #888;
+      font-style: italic;
+    }
+
+    .log-error {
+      color: #ff6b6b;
+      font-weight: bold;
+    }
+
+    h2 {
+      color: #e0e0e0;
+      margin-bottom: 1.2rem;
+    }
+
+    h3 {
+      color: #a5d6ff;
+      margin: 1.5rem 0 0.6rem;
+    }
+  </style>
+
+  <script>
+    async function fetchLog(url, contentElement, loadingElement) {
+      try {
+        loadingElement.style.display = 'block';
+        contentElement.style.display = 'none';
+
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`HTTP error ${response.status}`);
+        }
+
+        const text = await response.text();
+        contentElement.textContent = text;
+
+        loadingElement.style.display = 'none';
+        contentElement.style.display = 'block';
+      } catch (err) {
+        loadingElement.innerHTML = `<span class="log-error">Error loading log: ${err.message}</span>`;
+      }
+    }
+
+    function updateLogs() {
+      const lcuUrl  = "https://lofar.ie/operations-monitor/filestatus_lcu.log";
+      const lgcUrl  = "https://lofar.ie/operations-monitor/filestatus_lgc.log";
+
+      const lcuLoading = document.querySelector("#lcu-status .log-loading");
+      const lcuContent = document.getElementById("lcu-content");
+
+      const lgcLoading = document.querySelector("#lgc-status .log-loading");
+      const lgcContent = document.getElementById("lgc-content");
+
+      fetchLog(lcuUrl, lcuContent, lcuLoading);
+      fetchLog(lgcUrl, lgcContent, lgcLoading);
+    }
+
+    updateLogs();
+    setInterval(updateLogs, 240000);
+  </script>
+</div>
+
+<!-- -- below script for tab navigation -- -->
+<script>
+        function openPage(pageName, elmnt) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablink");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].style.backgroundColor = "#555";
+            }
+            document.getElementById(pageName).style.display = "block";
+            elmnt.style.backgroundColor = "#777";
+        }
+
+        // Default open
+        document.getElementById("spectrogramViewer").click();
+        
+        // Handle hash navigation
+       let hashTag = window.location.hash;
+       
+       if (hashTag !== '') {
+           hashTag = hashTag.substring(1);
+           let targetName = '';
+
+           switch (hashTag) {
+               case "enginfo":
+               case "engineering":
+               case "engineeringinfo":
+               case "eng":
+                   targetName = 'engineering';
+                   break;
+               case "archive":
+               case "archivedata":
+               case "archiveddata":
+               case "arch":
+               case "data":
+                   targetName = 'archive';
+                   break;
+               case "spectrogram":
+               case "spec":
+                   targetName = 'spectrogramViewer';
+                   break;
+           }
+           
+           if (targetName !== '') {
+               document.getElementById(targetName).click();
+           }
+      }
+</script>
