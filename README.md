@@ -18,15 +18,10 @@ This single-page application visualizes high-resolution spectrogram data across 
   |-----------------|-----------------------------------------------|
   | Start Time      | Slide to choose where in the observation to begin (minutes) |
   | Duration        | Select how many minutes to display (Observation start - Observation end) |
-  | Colormap        | Switch between Viridis, Plasma, Inferno, Hot, Jet |
-  | Gamma           | Adjust contrast / dynamic range (power-law normalization) |
-  | Reset View      | Return to full-duration view at t=0           |
+  | Colormap        | Switch between Viridis, Cividis, Grey, Jet |
 
-- Intensity is shown after:
-  - Log10 scaling
-  - Per-frequency background (median) subtraction
-  - Global percentile-based clipping + gamma correction
-- Hover shows precise frequency, time, and normalized intensity values
+
+
 
 
 
