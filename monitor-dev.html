@@ -1,4 +1,3 @@
-
 <script>history.scrollRestoration="manual";window.scrollTo(0,0)</script>
 
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
@@ -272,7 +271,7 @@
         
         async function loadSpecData() {
             try {
-                const response = await fetch('https://lofar.ie/wp-content/uploads/operations-monitor/test_dev/latest_spectrogram_test.json');
+                const response = await fetch('https://lofar.ie/wp-content/uploads/operations-monitor/file_latest_spectrogram.json.json');
                 spectrogramData = await response.json();
                 
                 const meta = spectrogramData.metadata;
@@ -289,7 +288,7 @@
                 document.getElementById('spec_info').innerHTML = `
                     <strong>File:</strong> ${meta.original_file} | 
                     <strong>Start:</strong> ${new Date(meta.start_time).toISOString()} | 
-                    <strong>Duration:</strong> ${(meta.duration_seconds / 60).toFixed(1)} min 
+                    <strong>Duration:</strong> ${(Math.ceil(meta.duration_seconds / 60)).toFixed(1)} min 
                 `;
                 
                 document.getElementById('spec_duration').max = Math.ceil(meta.duration_seconds / 60);
@@ -372,7 +371,7 @@
             const allData = dividedBands.flatMap(band => band.flat());
             allData.sort((a,b) => a - b);
             const refVmin = allData[Math.floor(allData.length * 0.30)] ?? 0;
-            const refVmax = allData[Math.floor(allData.length * 0.95)] ?? 1;
+            const refVmax = allData[Math.floor(allData.length * 0.99)] ?? 1;
             
             const processedBands = dividedBands.map(divided => 
                 applySpecPowerNorm(divided, refVmin, refVmax, gamma)

@@ -10,4 +10,5 @@ wheels/
 .venv
 *.dat
 
+# Data files used during testing
 *.json
